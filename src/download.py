@@ -2,14 +2,14 @@
 # encoding: utf-8
 '''
 Created on 28 May 2017
-
 @author: cave
 
 '''
 
 import MySQLdb, tweepy, requests, re
-
 import config
+from dns.name import empty
+from _mysql import NULL
 
 
 
@@ -29,12 +29,8 @@ def chk_author(tw_id):
     print 'UserID: ', u.id, 'UserName:', u.screen_name
 
     if read_user(u.id) is False:
-        #ls_author = ('0id', '1author', '2img_src', '3src_hash', '4img_cdn', '5cdn_hash' )
-        insert_user(u.id, u.screen_name, u.profile_image_url)
-                  
-#     uploadurl = cdn + twitter
-#     r = requests.get(uploadurl)
-#     j = r.json()
+        #ls_author = ('0id', '1author', '2img_src', '3img_cdn', '4cdn_hash' )
+        insert_user(u.id, u.screen_name, u.profile_image_url_https)
     return 1
 
 def read_user(tw_id):
@@ -46,15 +42,46 @@ def read_user(tw_id):
     try:
         cursor.execute(sql)
         results = cursor.fetchone()
-        print results[0], results[1], results[2], results[3], results[4], results[5]
-        return True
     except:
-        print "Error: unable to fecth data"
-        return False 
+        print "Error: unable to fetch data"
+
+         
+    if results[0] == tw_id:
+        print 'EXISTS: ', tw_id 
+        return True
+    else: 
+        return False
 
 
 def insert_user(tw_id, tw_screen_name, tw_profile_image_url):
+    denormal = tw_profile_image_url.replace('_normal', '')
+    uploadurl = cdn + denormal
+    r = requests.get(uploadurl) 
+    j = r.json()
+    #print "CDNURL", j["url"], j["hash"]
     
+    cursor = db.cursor()
+   
+    author_id = "'" + str(tw_id) + "'" 
+    user_id = "'" + tw_screen_name + "'"
+    img_src = "'" + denormal + "'"
+    img_cdn = "'" + j["url"] + "'"
+    cdn_hash = "'" + j["hash"] + "'"
+
+    sql = """INSERT INTO author (id, author, img_src, img_cdn, cdn_hash) VALUES (%s, %s, %s, %s, %s)"""% \
+    (author_id, user_id, img_src, img_cdn, cdn_hash) 
+       
+    try:
+        # Execute the SQL command
+        cursor.execute(sql)
+        # Commit your changes in the database
+        db.commit()
+    except db.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        # Rollback in case there is any error
+        db.rollback()
+
+    return (j["url"], j["hash"])
     
     
 
@@ -83,21 +110,12 @@ tweetimageurl = ''
 twlink = 'https://twitter.com/wichtigeInfos/status/' 
 
 ls_tweet = ('0tw_id', '1author_id', '2text', '3link_src', '4grafik_src', '5grafik_cdn', '6date', '7time', '8tags', '9links')
-ls_author = ('0id', '1author', '2img_src', '3src_hash', '4img_cdn', '5cdn_hash' )
+ls_author = ('0id', '1author', '2img_src', '3img_cdn', '4cdn_hash' )
 ls_tags = ('id')
 ls_links = ('id')
 
 ##http://docs.tweepy.org/en/v3.5.0/api.html#API.user_timeline
 tweets = api.user_timeline("wichtigeinfos", page = 1, count = 3, tweet_mode="extended")
-
-
-
-u = api.get_user('wichtigeinfos')
-print 'UserID: ', u.id, 'UserName:', 'wichtigeInfos'
-
-
-
-
 
 
 for tweet in tweets:
@@ -110,7 +128,8 @@ for tweet in tweets:
         if 'urls' in tweet.entities:
             #print tweet.entities
             for url in tweet.entities['urls']:
-                print "URLS:", url['url']                 
+                print "URLS:", url['url']               
+        chk_author(tweet.user.id)
         if 'media' in tweet.entities:         
             for image in  tweet.entities['media']:
                 j = cdn_upload(cdn, image['media_url'])
@@ -122,31 +141,35 @@ for tweet in tweets:
         print "\n"
 
 
-# prepare a cursor object using cursor() method
-cursor = db.cursor()
-
-sql = "SELECT * FROM author \
-       WHERE author = 'cavebeat' "
-try:
-    cursor.execute(sql)
-    results = cursor.fetchone()
-    print results
-except:
-    print "Error: unable to fetch data"
 
 
-# Prepare SQL query to INSERT a record into the database.
-sql = """INSERT INTO author (author, img_src, img_cdn) \
-    VALUES ('cavebeat', 'https://pbs.twimg.com/profile_images/512934277/cave.jpg', 'http://cdn.cavebeat.lan//ph3tf63ju3.jpg')"""
-    
-try:
-    # Execute the SQL command
-    cursor.execute(sql)
-    # Commit your changes in the database
-    db.commit()
-except:
-    # Rollback in case there is any error
-    db.rollback()
+
+# 
+# # prepare a cursor object using cursor() method
+# cursor = db.cursor()
+# 
+# sql = "SELECT * FROM author \
+#        WHERE author = 'cavebeat' "
+# try:
+#     cursor.execute(sql)
+#     results = cursor.fetchone()
+#     print results
+# except:
+#     print "Error: unable to fetch data"
+
+
+# # Prepare SQL query to INSERT a record into the database.
+# sql = """INSERT INTO author (author, img_src, img_cdn) \
+#     VALUES ('cavebeat', 'https://pbs.twimg.com/profile_images/512934277/cave.jpg', 'http://cdn.cavebeat.lan//ph3tf63ju3.jpg')"""
+#     
+# try:
+#     # Execute the SQL command
+#     cursor.execute(sql)
+#     # Commit your changes in the database
+#     db.commit()
+# except:
+#     # Rollback in case there is any error
+#     db.rollback()
     
     
     
