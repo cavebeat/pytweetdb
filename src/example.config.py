@@ -1,0 +1,4 @@
+consumer_key = 'asdfasdfasdfasdfasdfasdfasdf'
+consumer_secret = 'asdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdf'
+access_token = 'adsfadsfasdfasdfasdfasdfadsfasdfadfasdfasdfasdfasdfasdf'
+access_token_secret = 'adfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfasdfa'
