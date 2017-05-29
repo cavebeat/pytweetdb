@@ -5,23 +5,20 @@ Created on 28 May 2017
 @author: cave
 
 '''
-
-import MySQLdb, tweepy, requests, re
-import config
-from dns.name import empty
-from _mysql import NULL
-
-
+from puddlestuff.functions import false
 
 
 
 def cdn_upload(cdn, twitter):
+    #import cdn as url prefix, twitter as external url
     #upload media to cdn pictshare               
+    #concatenate the prefix and the external url
     uploadurl = cdn + twitter
+    #basically curl cdn/backend.php?externalURL
     r = requests.get(uploadurl)
     j = r.json()
-    return j
-
+    #return the url of the uploaded image
+    return j["url"]
 
 
 def chk_author(tw_id):
@@ -47,11 +44,49 @@ def read_user(tw_id):
 
          
     if results[0] == tw_id:
-        print 'EXISTS: ', tw_id 
+        #author already exists in db
+        ##print 'EXISTS: ', tw_id 
         return True
     else: 
         return False
+    
+#ls_tweet = ('0tw_id', '1author_id', '2text', '3link_src', '4grafik_src', '5grafik_cdn', '6date', '7time', '8tags', '9links')    
+def insert_tweet(tweet_id, user_id, full_text, url_src, img_src, img_cdn, _date, _time):
+    cursor = db.cursor()
+   
+    tw_id = "'" + str(tweet_id) + "'"       #123456789
+    author_id = "'" + str(user_id) + "'"         #username
+    text = "'" + full_text + "'"            #lorem ipsum
+#     text = text.encode('utf8')
+    link_src = "'" + url_src + "'"          #https://twitter.com/wichtigeInfos/status/123456789
+    grafik_src = "'" + img_src + "'"        #pbs.twimg
+    #grafik_src.encode("utf-8")
+    grafik_cdn = "'" + img_cdn + "'"        #cdn.cavebeat.lan #pictshare
+    #grafik_cdn.encode("utf-8")
+    date = "'" + str(_date) + "'"
+    time ="'" + str(_time) + "'"
+#    grafik_src = "'" + 'asdf' + "'"        #pbs.twimg
+#    grafik_cdn = "'" + 'adsf' + "'"        #cdn.cavebeat.lan #pictshare
 
+
+    sql = """INSERT INTO tweets (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""% \
+    (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) 
+       
+    try:
+        # Execute the SQL command
+        cursor.execute(sql)
+        # Commit your changes in the database
+        db.commit()
+        return True
+    except db.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        # Rollback in case there is any error
+        db.rollback()
+        return False
+
+    
+    
+    
 
 def insert_user(tw_id, tw_screen_name, tw_profile_image_url):
     denormal = tw_profile_image_url.replace('_normal', '')
@@ -83,8 +118,10 @@ def insert_user(tw_id, tw_screen_name, tw_profile_image_url):
 
     return (j["url"], j["hash"])
     
-    
 
+
+import MySQLdb, tweepy, requests, re
+import config
 consumer_key = config.consumer_key
 consumer_secret = config.consumer_secret
 access_token = config.access_token
@@ -101,7 +138,9 @@ api = tweepy.API(auth)
 db = MySQLdb.connect("192.168.100.201",             #Host
                      "wichtigeinfos",               #User
                      "ANLvefC8X3TB4poz9QcqS7tPk",   #Password
-                     "wichtigeinfos" )              #Database
+                     "wichtigeinfos",               #Database
+                     use_unicode=True, 
+                     charset="utf8")   
 
 
 #Local PictShare Server
@@ -115,64 +154,45 @@ ls_tags = ('id')
 ls_links = ('id')
 
 ##http://docs.tweepy.org/en/v3.5.0/api.html#API.user_timeline
-tweets = api.user_timeline("wichtigeinfos", page = 1, count = 3, tweet_mode="extended")
+tweets = api.user_timeline("wichtigeinfos", page = 1, count = 2, tweet_mode="extended")
 
 
 for tweet in tweets:
-##    #print tweet.id, tweet.created_at, tweet.text.encode("utf-8"),  tweet.retweeted
-    print twlink + str(tweet.id), tweet.created_at, "\n", re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8"))
     if tweet.retweeted is False:
+        
+        #check if author of tweet is already in the db, if not upload img and insert to db.author
+        chk_author(tweet.user.id)
+        #extract images of the tweet and upload to CDN
+        if 'media' in tweet.entities:         
+            for image in  tweet.entities['media']:
+                grafik_src = image['media_url']
+                grafik_cdn = cdn_upload(cdn, image['media_url'])
+                print "CDNURL", grafik_cdn 
+        
+        print twlink + str(tweet.id), tweet.created_at, "\n", re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8"))
+
+        insert_tweet(tweet.id, tweet.user.id, 
+                     re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8")), 
+                     twlink + str(tweet.id), 
+                     grafik_src.encode("utf-8"), grafik_cdn.encode("utf-8"), tweet.created_at.date(), tweet.created_at.time())
+        
+        #extract the Hashtags and insert into the DB
         if 'hashtags' in tweet.entities:
             for tags in  tweet.entities['hashtags']:
                 print "TAGS:", tags['text']
+                
+        #extract the links/URL from tweet and insert into DB
         if 'urls' in tweet.entities:
             #print tweet.entities
             for url in tweet.entities['urls']:
                 print "URLS:", url['url']               
-        chk_author(tweet.user.id)
-        if 'media' in tweet.entities:         
-            for image in  tweet.entities['media']:
-                j = cdn_upload(cdn, image['media_url'])
-#                 tweetimageurl = image['media_url']               
-#                 uploadurl = cdn + tweetimageurl
-#                 r = requests.get(uploadurl)
-#                 j = r.json()
-                print "CDNURL", j["url"]
         print "\n"
-
-
-
-
-
-# 
-# # prepare a cursor object using cursor() method
-# cursor = db.cursor()
-# 
-# sql = "SELECT * FROM author \
-#        WHERE author = 'cavebeat' "
-# try:
-#     cursor.execute(sql)
-#     results = cursor.fetchone()
-#     print results
-# except:
-#     print "Error: unable to fetch data"
-
-
-# # Prepare SQL query to INSERT a record into the database.
-# sql = """INSERT INTO author (author, img_src, img_cdn) \
-#     VALUES ('cavebeat', 'https://pbs.twimg.com/profile_images/512934277/cave.jpg', 'http://cdn.cavebeat.lan//ph3tf63ju3.jpg')"""
-#     
-# try:
-#     # Execute the SQL command
-#     cursor.execute(sql)
-#     # Commit your changes in the database
-#     db.commit()
-# except:
-#     # Rollback in case there is any error
-#     db.rollback()
-    
-    
-    
 
 # disconnect from server
 db.close()
+
+
+
+
+
+
