@@ -39,8 +39,8 @@ def read_user(tw_id):
     try:
         cursor.execute(sql)
         results = cursor.fetchone()
-    except:
-        print "Error: unable to fetch data"
+    except db.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
 
          
     if results[0] == tw_id:
@@ -49,6 +49,41 @@ def read_user(tw_id):
         return True
     else: 
         return False
+    
+    
+def read_tweet(tw_id):
+# prepare a cursor object using cursor() method
+    cursor = db.cursor()
+      
+    sql = "SELECT * FROM tweets \
+        WHERE tw_id = '%s'" % tw_id
+    try:
+        cursor.execute(sql)
+        results = cursor.fetchone()
+        if results[0] == tw_id:
+            return True
+    except db.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        return False    
+    
+    
+def read_tags(tw_id, tag):
+# prepare a cursor object using cursor() method
+    cursor = db.cursor()
+      
+    sql = "SELECT * FROM tags \
+        WHERE id == '%s'" % tw_id
+    try:
+        cursor.execute(sql)
+    except db.Error, e:
+        print "Error %d: %s" % (e.args[0],e.args[1])
+        return False        
+
+    results = cursor.fetchone()
+    if results[0] == tw_id and results[1] == tag:
+        return True
+    else:
+        return False    
     
 #ls_tweet = ('0tw_id', '1author_id', '2text', '3link_src', '4grafik_src', '5grafik_cdn', '6date', '7time', '8tags', '9links')    
 def insert_tweet(tweet_id, user_id, full_text, url_src, img_src, img_cdn, _date, _time):
@@ -170,17 +205,19 @@ for tweet in tweets:
                 print "CDNURL", grafik_cdn 
         
         print twlink + str(tweet.id), tweet.created_at, "\n", re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8"))
-
-        insert_tweet(tweet.id, tweet.user.id, 
-                     re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8")), 
-                     twlink + str(tweet.id), 
-                     grafik_src.encode("utf-8"), grafik_cdn.encode("utf-8"), tweet.created_at.date(), tweet.created_at.time())
+        if read_tweet(tweet.id) is False:
+            insert_tweet(tweet.id, tweet.user.id, 
+                         re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8")), 
+                         twlink + str(tweet.id), 
+                         grafik_src.encode("utf-8"), grafik_cdn.encode("utf-8"), tweet.created_at.date(), tweet.created_at.time())
         
         #extract the Hashtags and insert into the DB
         if 'hashtags' in tweet.entities:
             for tags in  tweet.entities['hashtags']:
                 print "TAGS:", tags['text']
-                
+                if read_tags(tweet.id, tags['text']) is False:
+#                     insert_tags(tweet.id, tags['text'])
+                    print 'tag nicht vorhanden'
         #extract the links/URL from tweet and insert into DB
         if 'urls' in tweet.entities:
             #print tweet.entities
