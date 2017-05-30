@@ -5,9 +5,6 @@ Created on 28 May 2017
 @author: cave
 
 '''
-from puddlestuff.functions import false
-
-
 
 def cdn_upload(cdn, twitter):
     #import cdn as url prefix, twitter as external url
@@ -30,61 +27,72 @@ def chk_author(tw_id):
         insert_user(u.id, u.screen_name, u.profile_image_url_https)
     return 1
 
-def read_user(tw_id):
+def read_user(pu_id):
 # prepare a cursor object using cursor() method
     cursor = db.cursor()
       
     sql = "SELECT * FROM author \
-        WHERE id = '%d'" % tw_id
-    try:
-        cursor.execute(sql)
-        results = cursor.fetchone()
-    except db.Error, e:
-        print "Error %d: %s" % (e.args[0],e.args[1])
+        WHERE id = '%d'" % pu_id
 
-         
-    if results[0] == tw_id:
-        #author already exists in db
-        ##print 'EXISTS: ', tw_id 
-        return True
-    else: 
+    cursor.execute(sql)
+    results = cursor.fetchone()
+    
+    if not results:
         return False
+    return True
     
-    
-def read_tweet(tw_id):
+def read_tweet(pu_id):
 # prepare a cursor object using cursor() method
     cursor = db.cursor()
       
     sql = "SELECT * FROM tweets \
-        WHERE tw_id = '%s'" % tw_id
-    try:
-        cursor.execute(sql)
-        results = cursor.fetchone()
-        if results[0] == tw_id:
-            return True
-    except db.Error, e:
-        print "Error %d: %s" % (e.args[0],e.args[1])
-        return False    
+        WHERE tw_id = '%s'" % pu_id
+    
+    cursor.execute(sql)
+    results = cursor.fetchone()
+    
+    if not results:
+        return False
+    return True
     
     
-def read_tags(tw_id, tag):
+def read_tags(pu_id, pu_tag):
 # prepare a cursor object using cursor() method
     cursor = db.cursor()
       
     sql = "SELECT * FROM tags \
-        WHERE id == '%s'" % tw_id
+    WHERE id = '%s' AND tags = '%s'" % (str(pu_id), pu_tag) 
+
+    cursor.execute(sql)
+    
+    results = cursor.fetchone()
+    if not results:
+        return False
+    return True
+
+
+def insert_tag(pu_id, pu_tag):
+    cursor = db.cursor()
+   
+    l_id = "'" + str(pu_id) + "'"       #123456789
+    l_tag = "'" + pu_tag + "'"         #username
+    
+    sql = """INSERT INTO tags (id, tags) VALUES (%s, %s)"""% \
+    (l_id, l_tag) 
+       
     try:
+        # Execute the SQL command
         cursor.execute(sql)
+        # Commit your changes in the database
+        db.commit()
+        return True
     except db.Error, e:
         print "Error %d: %s" % (e.args[0],e.args[1])
-        return False        
+        # Rollback in case there is any error
+        db.rollback()
+        return False
 
-    results = cursor.fetchone()
-    if results[0] == tw_id and results[1] == tag:
-        return True
-    else:
-        return False    
-    
+
 #ls_tweet = ('0tw_id', '1author_id', '2text', '3link_src', '4grafik_src', '5grafik_cdn', '6date', '7time', '8tags', '9links')    
 def insert_tweet(tweet_id, user_id, full_text, url_src, img_src, img_cdn, _date, _time):
     cursor = db.cursor()
@@ -104,12 +112,18 @@ def insert_tweet(tweet_id, user_id, full_text, url_src, img_src, img_cdn, _date,
 #    grafik_cdn = "'" + 'adsf' + "'"        #cdn.cavebeat.lan #pictshare
 
 
-    sql = """INSERT INTO tweets (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"""% \
-    (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) 
+
+    
+    sql = "INSERT INTO tweets (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) \
+    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)"
+
+
+#     sql = u'INSERT INTO tweets (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)'% \
+#     (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time) 
        
     try:
         # Execute the SQL command
-        cursor.execute(sql)
+        cursor.execute(sql, (tw_id, author_id, text, link_src, grafik_src, grafik_cdn, date, time))
         # Commit your changes in the database
         db.commit()
         return True
@@ -128,8 +142,7 @@ def insert_user(tw_id, tw_screen_name, tw_profile_image_url):
     uploadurl = cdn + denormal
     r = requests.get(uploadurl) 
     j = r.json()
-    #print "CDNURL", j["url"], j["hash"]
-    
+        
     cursor = db.cursor()
    
     author_id = "'" + str(tw_id) + "'" 
@@ -167,8 +180,6 @@ auth = tweepy.OAuthHandler(consumer_key, consumer_secret)
 auth.set_access_token(access_token, access_token_secret)
 api = tweepy.API(auth)
 
-
-
 # Open database connection
 db = MySQLdb.connect("192.168.100.201",             #Host
                      "wichtigeinfos",               #User
@@ -189,41 +200,39 @@ ls_tags = ('id')
 ls_links = ('id')
 
 ##http://docs.tweepy.org/en/v3.5.0/api.html#API.user_timeline
-tweets = api.user_timeline("wichtigeinfos", page = 1, count = 2, tweet_mode="extended")
-
+tweets = api.user_timeline("wichtigeinfos", page = 1, count = 25, tweet_mode="extended")
 
 for tweet in tweets:
     if tweet.retweeted is False:
-        
-        #check if author of tweet is already in the db, if not upload img and insert to db.author
-        chk_author(tweet.user.id)
-        #extract images of the tweet and upload to CDN
-        if 'media' in tweet.entities:         
-            for image in  tweet.entities['media']:
-                grafik_src = image['media_url']
-                grafik_cdn = cdn_upload(cdn, image['media_url'])
-                print "CDNURL", grafik_cdn 
-        
-        print twlink + str(tweet.id), tweet.created_at, "\n", re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8"))
-        if read_tweet(tweet.id) is False:
-            insert_tweet(tweet.id, tweet.user.id, 
-                         re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8")), 
-                         twlink + str(tweet.id), 
-                         grafik_src.encode("utf-8"), grafik_cdn.encode("utf-8"), tweet.created_at.date(), tweet.created_at.time())
-        
-        #extract the Hashtags and insert into the DB
-        if 'hashtags' in tweet.entities:
-            for tags in  tweet.entities['hashtags']:
-                print "TAGS:", tags['text']
-                if read_tags(tweet.id, tags['text']) is False:
-#                     insert_tags(tweet.id, tags['text'])
-                    print 'tag nicht vorhanden'
-        #extract the links/URL from tweet and insert into DB
-        if 'urls' in tweet.entities:
-            #print tweet.entities
-            for url in tweet.entities['urls']:
-                print "URLS:", url['url']               
-        print "\n"
+        if tweet.id == 866578572726734848:
+            #check if author of tweet is already in the db, if not upload img and insert to db.author
+            chk_author(tweet.user.id)
+            #extract images of the tweet and upload to CDN
+            if 'media' in tweet.entities:         
+                for image in  tweet.entities['media']:
+                    grafik_src = image['media_url']
+                    grafik_cdn = cdn_upload(cdn, image['media_url'])
+                    print "CDNURL", grafik_cdn 
+            
+            print twlink + str(tweet.id), tweet.created_at, "\n", re.sub(r"https://t.co\S+", "", tweet.full_text.encode("utf-8"))
+            if read_tweet(tweet.id) is False:
+                insert_tweet(tweet.id, tweet.user.id, 
+                             re.sub(r"https://t.co\S+", "", tweet.full_text), 
+                             twlink + str(tweet.id), 
+                             grafik_src.encode("utf-8"), grafik_cdn.encode("utf-8"), tweet.created_at.date(), tweet.created_at.time())
+            
+            #extract the Hashtags and insert into the DB
+            if 'hashtags' in tweet.entities:
+                for tags in  tweet.entities['hashtags']:
+                    print "TAGS:", tags['text']
+                    if read_tags(tweet.id, tags['text']) is False:
+                        insert_tag(tweet.id, tags['text'])
+            #extract the links/URL from tweet and insert into DB
+            if 'urls' in tweet.entities:
+                #print tweet.entities
+                for url in tweet.entities['urls']:
+                    print "URLS:", url['url']               
+            print "\n"
 
 # disconnect from server
 db.close()
